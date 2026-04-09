@@ -1,0 +1,98 @@
+{
+  "tools": [
+    {
+      "id": "daily_scrum",
+      "name": "데일리 스크럼",
+      "description": "스탠드업 기록 · 무드미터",
+      "icon_emoji": "📅",
+      "launch": {
+        "type": "pyw",
+        "path": "daily_scrum.pyw"
+      },
+      "hotkey": "ctrl+alt+1",
+      "badge_check": {
+        "type": "daily_scrum_json",
+        "history_dir": "daily_scrum_history"
+      }
+    },
+    {
+      "id": "email_template",
+      "name": "이메일 템플릿",
+      "description": "변수 치환 이메일 관리",
+      "icon_emoji": "✉️",
+      "launch": {
+        "type": "pyw",
+        "path": "email_template.pyw"
+      },
+      "hotkey": "ctrl+alt+2",
+      "badge_check": null
+    },
+    {
+      "id": "file_batch_mover",
+      "name": "파일 배치 이동기",
+      "description": "폴더구조 유지 배치 복사",
+      "icon_emoji": "📦",
+      "launch": {
+        "type": "exe",
+        "path": "dist/file_batch_mover.exe"
+      },
+      "hotkey": "ctrl+alt+3",
+      "badge_check": null
+    },
+    {
+      "id": "file_rename",
+      "name": "파일명 변경기",
+      "description": "문자열 제거 일괄 변경",
+      "icon_emoji": "✏️",
+      "launch": {
+        "type": "py",
+        "path": "file_rename/rename_tool.py"
+      },
+      "hotkey": "ctrl+alt+4",
+      "badge_check": null
+    },
+    {
+      "id": "quick_phrases",
+      "name": "빠른 문구",
+      "description": "자주 쓰는 문구 즉시 복사",
+      "icon_emoji": "💬",
+      "launch": {
+        "type": "py",
+        "path": "quick_phrases.py"
+      },
+      "hotkey": "ctrl+alt+5",
+      "badge_check": null
+    },
+    {
+      "id": "alarm_clock",
+      "name": "알람 설정기",
+      "description": "알람·타이머·스톱워치",
+      "icon_emoji": "⏰",
+      "launch": {
+        "type": "pyw",
+        "path": "alarm_clock.pyw"
+      },
+      "hotkey": "ctrl+alt+7",
+      "badge_check": null
+    },
+    {
+      "id": "task_manager",
+      "name": "작업 관리",
+      "description": "일정·메모·알림 통합 작업 관리",
+      "icon_emoji": "🗂️",
+      "launch": {
+        "type": "py",
+        "path": "task_manager.py"
+      },
+      "hotkey": "ctrl+alt+6",
+      "badge_check": {
+        "type": "task_urgent",
+        "data_file": "task_manager_data.json"
+      }
+    }
+  ],
+  "settings": {
+    "autostart": false,
+    "start_minimized": true
+  }
+}

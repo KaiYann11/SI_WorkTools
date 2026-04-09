@@ -1,0 +1,19 @@
+# ── 런타임 데이터 (사용자 생성, 버전 관리 제외) ──
+task_manager_data.json
+alarm_data.json
+email_templates.json
+quick_phrases.json
+daily_scrum_history/
+
+# ── 빌드 산출물 ──
+build/
+dist/
+*.pyc
+__pycache__/
+
+# ── 실행 파일 ──
+*.exe
+*.exe.old.*
+
+# ── 기타 ──
+null
