@@ -146,6 +146,7 @@ def make_task(data, **kw):
         "actual_effort": "",
         "change_history": [],
         "memos": [],
+        "todos": [],
         "result": {"summary": "", "score": None, "feedback": ""},
         "created_at": now,
         "updated_at": now,
@@ -519,6 +520,13 @@ class TaskEditor(tk.Toplevel):
 
     def _build(self):
         self.configure(bg="white")
+
+        # 버튼을 먼저 pack해야 창 크기와 무관하게 항상 표시됨
+        btn_frm = tk.Frame(self, bg="white")
+        btn_frm.pack(side="bottom", fill="x", padx=12, pady=(0, 10))
+        ttk.Button(btn_frm, text="저장", command=self._save).pack(side="right")
+        ttk.Button(btn_frm, text="취소", command=self.destroy).pack(side="right", padx=4)
+
         nb = ttk.Notebook(self)
         nb.pack(fill="both", expand=True, padx=8, pady=8)
 
@@ -531,12 +539,6 @@ class TaskEditor(tk.Toplevel):
         sched = tk.Frame(nb, bg="white")
         nb.add(sched, text="  일정 · 알림  ")
         self._build_sched(sched)
-
-        # 버튼
-        btn_frm = tk.Frame(self, bg="white")
-        btn_frm.pack(fill="x", padx=12, pady=(0, 10))
-        ttk.Button(btn_frm, text="저장", command=self._save).pack(side="right")
-        ttk.Button(btn_frm, text="취소", command=self.destroy).pack(side="right", padx=4)
 
     def _row(self, parent, label, row, widget_fn, col_span=1):
         tk.Label(parent, text=label, bg="white", font=FONT_S,
@@ -578,6 +580,29 @@ class TaskEditor(tk.Toplevel):
         self._row(fields_frm, "태그",     7, lambda p: ttk.Entry(p, textvariable=self.v_tags, font=FONT))
         tk.Label(fields_frm, text="(쉼표로 구분)", bg="white", fg="#94A3B8", font=("맑은 고딕", 8)).grid(
             row=7, column=2, sticky="w")
+
+        # ── To-Do 섹션
+        tk.Label(fields_frm, text="To-Do", bg="white", font=FONT_S,
+                 fg="#374151", anchor="e", width=10).grid(
+            row=8, column=0, padx=(12, 6), pady=(8, 2), sticky="ne")
+
+        todo_outer = tk.Frame(fields_frm, bg="white")
+        todo_outer.grid(row=8, column=1, columnspan=2, padx=(0, 12), pady=(8, 4), sticky="ew")
+        todo_outer.columnconfigure(0, weight=1)
+
+        # 입력 행
+        add_frm = tk.Frame(todo_outer, bg="white")
+        add_frm.pack(fill="x")
+        self._todo_entry = ttk.Entry(add_frm, font=FONT)
+        self._todo_entry.pack(side="left", fill="x", expand=True)
+        self._todo_entry.bind("<Return>", lambda e: self._todo_add())
+        ttk.Button(add_frm, text="+ 추가", command=self._todo_add, width=6).pack(side="left", padx=(4, 0))
+
+        # 목록 영역
+        self._todo_list = tk.Frame(todo_outer, bg="white")
+        self._todo_list.pack(fill="x", pady=(4, 0))
+
+        self._todo_items = []  # [{"text": str, "done_var": BoolVar, "frame": Frame}]
 
         # ── 하단: 설명 (드래그로 높이·너비 조절 가능)
         desc_frm = tk.Frame(paned, bg="white")
@@ -644,6 +669,49 @@ class TaskEditor(tk.Toplevel):
         if result is not None:   # None = 취소, '' = 지우기
             var.set(result)
 
+    def _todo_add(self):
+        text = self._todo_entry.get().strip()
+        if not text:
+            return
+        self._todo_entry.delete(0, "end")
+        self._add_todo_row(text, done=False)
+
+    def _add_todo_row(self, text, done=False):
+        done_var = tk.BooleanVar(value=done)
+        item = {"text": text, "done_var": done_var, "frame": None}
+
+        row_frm = tk.Frame(self._todo_list, bg="white")
+        row_frm.pack(fill="x", pady=1)
+        item["frame"] = row_frm
+
+        cb = tk.Checkbutton(row_frm, variable=done_var, bg="white",
+                            activebackground="white",
+                            command=lambda i=item: self._todo_toggle(i))
+        cb.pack(side="left", padx=(2, 0))
+
+        lbl = tk.Label(row_frm, text=text, bg="white", font=FONT,
+                       fg="#374151", anchor="w", cursor="hand2")
+        lbl.pack(side="left", fill="x", expand=True, padx=(2, 4))
+        lbl.bind("<Button-1>", lambda e, v=done_var, i=item: (v.set(not v.get()), self._todo_toggle(i)))
+
+        def _remove(i=item):
+            i["frame"].destroy()
+            self._todo_items.remove(i)
+
+        tk.Button(row_frm, text="✕", font=("맑은 고딕", 8), relief="flat",
+                  bg="white", fg="#94A3B8", activeforeground="#EF4444",
+                  cursor="hand2", bd=0, command=_remove).pack(side="right", padx=(0, 4))
+
+        self._todo_items.append(item)
+
+    def _todo_toggle(self, item):
+        """완료 항목 텍스트 색상 갱신"""
+        for w in item["frame"].winfo_children():
+            if isinstance(w, tk.Label) and w.cget("cursor") == "hand2":
+                done = item["done_var"].get()
+                w.configure(fg="#9CA3AF" if done else "#374151",
+                            font=(FONT[0], FONT[1], "overstrike") if done else FONT)
+
     def _fill(self, t):
         self.v_title.set(t["title"])
         self.v_project.set(t.get("project", ""))
@@ -658,6 +726,8 @@ class TaskEditor(tk.Toplevel):
         self.v_deadline.set(t.get("deadline", ""))
         self.v_effort.set(t.get("effort", ""))
         self.v_notify.set(str(t.get("notify_before_min", 30)))
+        for td in t.get("todos", []):
+            self._add_todo_row(td["text"], done=td.get("done", False))
 
     def _save(self):
         title = self.v_title.get().strip()
@@ -685,6 +755,8 @@ class TaskEditor(tk.Toplevel):
             deadline=self.v_deadline.get().strip(),
             effort=self.v_effort.get().strip(),
             notify_before_min=nbm,
+            todos=[{"text": it["text"], "done": bool(it["done_var"].get())}
+                   for it in self._todo_items],
         )
 
         # 이력 추적 대상 필드 (변경 시 코멘트 요청)
@@ -2780,7 +2852,9 @@ class CloseTaskDialog(tk.Toplevel):
         self.task       = task
         self.on_confirm = on_confirm
         self.title("작업 종료 처리")
-        self.geometry("500x420")
+        unchecked_count = sum(1 for td in task.get("todos", []) if not td.get("done"))
+        height = 420 + max(0, unchecked_count) * 20
+        self.geometry(f"500x{height}")
         self.resizable(False, False)
         self.grab_set()
         self.configure(bg="white")
@@ -2790,6 +2864,27 @@ class CloseTaskDialog(tk.Toplevel):
     def _build(self):
         tk.Label(self, text=f"✅  {self.task['title']}  —  종료 처리",
                  bg="white", font=FONT_B, fg="#1E293B").pack(anchor="w", padx=14, pady=(12, 8))
+
+        # 미완료 To-Do 경고
+        unchecked = [td for td in self.task.get("todos", []) if not td.get("done")]
+        if unchecked:
+            warn_frm = tk.Frame(self, bg="#FEF3C7", relief="solid", bd=1)
+            warn_frm.pack(fill="x", padx=14, pady=(0, 10))
+            tk.Label(warn_frm,
+                     text=f"⚠  미완료 To-Do 항목이 {len(unchecked)}개 있습니다.",
+                     bg="#FEF3C7", fg="#92400E", font=FONT_S,
+                     anchor="w").pack(fill="x", padx=8, pady=(6, 2))
+            for td in unchecked:
+                tk.Label(warn_frm, text=f"  • {td['text']}",
+                         bg="#FEF3C7", fg="#78350F", font=FONT_S,
+                         anchor="w").pack(fill="x", padx=8)
+            tk.Label(warn_frm, bg="#FEF3C7").pack(pady=3)
+
+        # 버튼 먼저 pack (항상 보이도록)
+        btn_frm = tk.Frame(self, bg="white")
+        btn_frm.pack(side="bottom", fill="x", padx=14, pady=(4, 12))
+        ttk.Button(btn_frm, text="종료 확정", command=self._ok).pack(side="right")
+        ttk.Button(btn_frm, text="취소", command=self.destroy).pack(side="right", padx=4)
 
         frm = tk.Frame(self, bg="white")
         frm.pack(fill="both", expand=True, padx=14)
@@ -2840,12 +2935,6 @@ class CloseTaskDialog(tk.Toplevel):
         self.txt_feedback = tk.Text(frm, height=3, font=FONT, relief="solid", bd=1)
         self.txt_feedback.grid(row=3, column=1, sticky="ew", padx=(8, 0), pady=6)
         self.txt_feedback.insert("1.0", res.get("feedback", ""))
-
-        # 버튼
-        btn_frm = tk.Frame(self, bg="white")
-        btn_frm.pack(fill="x", padx=14, pady=(4, 12))
-        ttk.Button(btn_frm, text="종료 확정", command=self._ok).pack(side="right")
-        ttk.Button(btn_frm, text="취소", command=self.destroy).pack(side="right", padx=4)
 
     def _select_score(self, val):
         self._score_var.set(val)
