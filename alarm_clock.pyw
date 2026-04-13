@@ -375,9 +375,15 @@ class AlarmTab(tk.Frame):
 
     def _check(self, alarm):
         data = load_alarms()
+        today_str = datetime.datetime.now().strftime("%Y-%m-%d")
         for a in data["alarms"]:
             if a["id"] == alarm["id"]:
-                a["confirmed"] = not a.get("confirmed", False)
+                new_confirmed = not a.get("confirmed", False)
+                a["confirmed"] = new_confirmed
+                if new_confirmed:
+                    a["confirmed_date"] = today_str
+                else:
+                    a.pop("confirmed_date", None)
                 break
         save_alarms(data)
         self.refresh()
@@ -708,6 +714,25 @@ class AlarmNotifier:
         for alarm in data.get("alarms", []):
             if not alarm.get("enabled", True):
                 continue
+
+            # 반복 알람: 날짜가 바뀌었거나 오늘 알람 시간이 지나면 자동 해제
+            repeat = alarm.get("repeat", "한 번")
+            if repeat != "한 번" and alarm.get("confirmed", False):
+                confirmed_date = alarm.get("confirmed_date", "")
+                alarm_time_str = alarm.get("time", "")
+                should_reset = (
+                    confirmed_date != today_str or
+                    (confirmed_date == today_str and current_time > alarm_time_str)
+                )
+                if should_reset:
+                    alarm["confirmed"] = False
+                    alarm.pop("confirmed_date", None)
+                    changed = True
+
+            # confirmed 상태면 알람 울리지 않음
+            if alarm.get("confirmed", False):
+                continue
+
             if alarm.get("time") != current_time:
                 continue
 
@@ -715,7 +740,6 @@ class AlarmNotifier:
             if key in self._fired_today:
                 continue
 
-            repeat = alarm.get("repeat", "한 번")
             should = False
             if repeat == "한 번":
                 should = today_str not in alarm.get("fired_dates", [])
@@ -792,6 +816,14 @@ class AlarmClockApp:
             command=self._toggle_topmost)
         self._btn_top.pack(side="right", padx=4)
 
+        # + 알람 추가 버튼 (미니 모드 전용, 고정/최소화 버튼 왼쪽)
+        self._btn_mini_add = tk.Button(
+            self._hdr_frame, text="+ 알람", bg="#2563EB", fg="white",
+            font=("맑은 고딕", 9), relief="flat", cursor="hand2",
+            activebackground="#1D4ED8", activeforeground="white",
+            command=self._mini_add)
+        # 미니 모드 진입 시에만 pack
+
         # 타이틀 (right 버튼들 이후 left pack)
         self._hdr_title = tk.Label(
             self._hdr_frame, text="⏰ 알람 설정기", bg=HEADER_BG, fg="white",
@@ -838,6 +870,9 @@ class AlarmClockApp:
         self._mini_clock_after = None
         self._update_mini_clock()
 
+        self._btn_mini_add.pack(side="right", padx=4)
+        self._btn_mini_add.config(padx=4, pady=1)
+
         self._mini_frame.pack(fill="both", expand=True)
         self._btn_mini.config(text="⊞")
         self.root.minsize(0, 0)
@@ -861,6 +896,7 @@ class AlarmClockApp:
             except Exception: pass
 
         self._mini_frame.pack_forget()
+        self._btn_mini_add.pack_forget()
         self._hdr_frame.config(pady=10)
         self._btn_mini.config(font=("맑은 고딕", 13), padx=4, pady=0, text="⊟")
         self._btn_top.config(font=("맑은 고딕", 11), padx=4, pady=0)
@@ -897,11 +933,12 @@ class AlarmClockApp:
             for alarm in alarms:
                 self._make_mini_row(alarm)
 
-        # 창 높이 자동 조정 (헤더 바 ~28px + 행당 26px)
+        # 창 높이 자동 조정 (헤더 바 ~28px + 행당 26px + 버튼 행 24px)
         HDR_H = 28
         ROW_H = 26
+        BTN_H = 24
         n = max(len(alarms), 1)
-        h = HDR_H + n * ROW_H + 8
+        h = HDR_H + n * ROW_H + BTN_H + 8
         self.root.geometry(f"{self._MINI_W}x{h}")
 
         # 30초마다 남은시간 갱신
@@ -982,8 +1019,8 @@ class AlarmClockApp:
         # 구분선
         tk.Frame(self._mini_frame, bg="#E2E8F0", height=1).pack(fill="x")
 
-        # 10분 미만이면 깜빡임 시작
-        if enabled and rem_min < 10:
+        # 10분 미만이면 깜빡임 시작 (confirmed 상태면 깜빡이지 않음)
+        if enabled and not confirmed and rem_min < 10:
             self._start_blink(row, rem_lbl, base_bg)
 
     def _start_blink(self, row_widget, rem_label, base_color, interval=600):
@@ -1008,12 +1045,28 @@ class AlarmClockApp:
 
     def _mini_check(self, alarm):
         data = load_alarms()
+        today_str = datetime.datetime.now().strftime("%Y-%m-%d")
         for a in data["alarms"]:
             if a["id"] == alarm["id"]:
-                a["confirmed"] = not a.get("confirmed", False)
+                new_confirmed = not a.get("confirmed", False)
+                a["confirmed"] = new_confirmed
+                if new_confirmed:
+                    a["confirmed_date"] = today_str
+                else:
+                    a.pop("confirmed_date", None)
                 break
         save_alarms(data)
         self._refresh_mini()
+
+    def _mini_add(self):
+        def on_save(alarm):
+            data = load_alarms()
+            alarm["id"] = data["next_id"]
+            data["next_id"] += 1
+            data["alarms"].append(alarm)
+            save_alarms(data)
+            self._refresh_mini()
+        AlarmEditorDialog(self.root, on_save=on_save)
 
     def _mini_edit(self, alarm):
         def on_save(updated):
@@ -1063,9 +1116,11 @@ class AlarmClockApp:
     def confirm_alarm(self, alarm_id):
         """토스트 팝업의 '✔ 확인' 버튼에서 호출."""
         data = load_alarms()
+        today_str = datetime.datetime.now().strftime("%Y-%m-%d")
         for a in data["alarms"]:
             if a["id"] == alarm_id:
                 a["confirmed"] = True
+                a["confirmed_date"] = today_str
                 break
         save_alarms(data)
         self._alarm_tab.refresh()

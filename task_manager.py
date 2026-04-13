@@ -365,7 +365,7 @@ class LinkSelectorDialog(tk.Toplevel):
 class DateTimePickerDialog(tk.Toplevel):
     """캘린더 + 시/분 선택 팝업. 확인 시 'YYYY-MM-DDTHH:MM' 문자열을 반환."""
 
-    def __init__(self, parent, initial_value=""):
+    def __init__(self, parent, initial_value="", default_hour=9):
         super().__init__(parent)
         self.result = None
         self.title("날짜 · 시간 선택")
@@ -382,7 +382,7 @@ class DateTimePickerDialog(tk.Toplevel):
                 pass
 
         today = init_dt.date() if init_dt else date.today()
-        init_h = init_dt.hour if init_dt else 9
+        init_h = init_dt.hour if init_dt else default_hour
         init_m = init_dt.minute if init_dt else 0
 
         # 캘린더
@@ -442,9 +442,9 @@ class DateTimePickerDialog(tk.Toplevel):
         self.destroy()
 
 
-def pick_datetime(parent, initial_value=""):
+def pick_datetime(parent, initial_value="", default_hour=9):
     """모달 날짜+시간 선택. 취소 시 None, 지우기 시 '' 반환."""
-    dlg = DateTimePickerDialog(parent, initial_value)
+    dlg = DateTimePickerDialog(parent, initial_value, default_hour=default_hour)
     parent.wait_window(dlg)
     return dlg.result
 
@@ -510,7 +510,7 @@ class TaskEditor(tk.Toplevel):
         self.task = task
         self.on_save = on_save
         self.title("작업 추가" if task is None else "작업 수정")
-        self.geometry("580x540")
+        self.geometry("580x620")
         self.resizable(True, True)
         self.grab_set()
         self._build()
@@ -547,7 +547,14 @@ class TaskEditor(tk.Toplevel):
         return w
 
     def _build_basic(self, frm):
-        frm.columnconfigure(1, weight=1)
+        # PanedWindow으로 상단 필드 영역 / 하단 설명 영역 분리 → 드래그로 높이 조절
+        paned = ttk.PanedWindow(frm, orient="vertical")
+        paned.pack(fill="both", expand=True)
+
+        # ── 상단: 입력 필드
+        fields_frm = tk.Frame(paned, bg="white")
+        paned.add(fields_frm, weight=0)
+        fields_frm.columnconfigure(1, weight=1)
 
         self.v_title    = tk.StringVar()
         self.v_project  = tk.StringVar()
@@ -558,24 +565,34 @@ class TaskEditor(tk.Toplevel):
         self.v_status   = tk.StringVar(value="대기")
         self.v_tags     = tk.StringVar()
 
-        self._row(frm, "작업명 *", 0, lambda p: ttk.Entry(p, textvariable=self.v_title, font=FONT))
-        self._row(frm, "과제명",   1, lambda p: ttk.Entry(p, textvariable=self.v_project, font=FONT))
-        self._row(frm, "시스템명", 2, lambda p: ttk.Entry(p, textvariable=self.v_system, font=FONT))
-        self._row(frm, "담당자",   3, lambda p: ttk.Entry(p, textvariable=self.v_assignee, font=FONT))
-        self._row(frm, "작업 종류", 4, lambda p: ttk.Combobox(p, textvariable=self.v_type,
+        self._row(fields_frm, "작업명 *", 0, lambda p: ttk.Entry(p, textvariable=self.v_title, font=FONT))
+        self._row(fields_frm, "과제명",   1, lambda p: ttk.Entry(p, textvariable=self.v_project, font=FONT))
+        self._row(fields_frm, "시스템명", 2, lambda p: ttk.Entry(p, textvariable=self.v_system, font=FONT))
+        self._row(fields_frm, "담당자",   3, lambda p: ttk.Entry(p, textvariable=self.v_assignee, font=FONT))
+        self._row(fields_frm, "작업 종류", 4, lambda p: ttk.Combobox(p, textvariable=self.v_type,
                                                               values=TASK_TYPES, state="readonly", font=FONT))
-        self._row(frm, "우선순위", 5, lambda p: ttk.Combobox(p, textvariable=self.v_priority,
+        self._row(fields_frm, "우선순위", 5, lambda p: ttk.Combobox(p, textvariable=self.v_priority,
                                                              values=PRIORITIES, state="readonly", font=FONT))
-        self._row(frm, "상태",     6, lambda p: ttk.Combobox(p, textvariable=self.v_status,
+        self._row(fields_frm, "상태",     6, lambda p: ttk.Combobox(p, textvariable=self.v_status,
                                                              values=STATUSES, state="readonly", font=FONT))
-        self._row(frm, "태그",     7, lambda p: ttk.Entry(p, textvariable=self.v_tags, font=FONT))
-        tk.Label(frm, text="(쉼표로 구분)", bg="white", fg="#94A3B8", font=("맑은 고딕", 8)).grid(
+        self._row(fields_frm, "태그",     7, lambda p: ttk.Entry(p, textvariable=self.v_tags, font=FONT))
+        tk.Label(fields_frm, text="(쉼표로 구분)", bg="white", fg="#94A3B8", font=("맑은 고딕", 8)).grid(
             row=7, column=2, sticky="w")
 
-        tk.Label(frm, text="설명", bg="white", font=FONT_S, fg="#374151",
-                 anchor="e", width=10).grid(row=8, column=0, padx=(12, 6), pady=5, sticky="ne")
-        self.txt_desc = tk.Text(frm, height=5, font=FONT, relief="solid", bd=1)
-        self.txt_desc.grid(row=8, column=1, padx=(0, 12), pady=5, sticky="ew")
+        # ── 하단: 설명 (드래그로 높이·너비 조절 가능)
+        desc_frm = tk.Frame(paned, bg="white")
+        paned.add(desc_frm, weight=1)
+        desc_frm.rowconfigure(1, weight=1)
+        desc_frm.columnconfigure(0, weight=1)
+
+        tk.Label(desc_frm, text="설명", bg="white", font=FONT_S, fg="#374151",
+                 anchor="w").grid(row=0, column=0, columnspan=2, padx=12, pady=(6, 2), sticky="w")
+
+        self.txt_desc = tk.Text(desc_frm, font=FONT, relief="solid", bd=1, wrap="word")
+        sb_desc = ttk.Scrollbar(desc_frm, orient="vertical", command=self.txt_desc.yview)
+        self.txt_desc.configure(yscrollcommand=sb_desc.set)
+        self.txt_desc.grid(row=1, column=0, padx=(12, 0), pady=(0, 6), sticky="nsew")
+        sb_desc.grid(row=1, column=1, padx=(0, 12), pady=(0, 6), sticky="ns")
 
     def _build_sched(self, frm):
         frm.columnconfigure(1, weight=1)
@@ -585,7 +602,7 @@ class TaskEditor(tk.Toplevel):
         self.v_effort    = tk.StringVar()
         self.v_notify    = tk.StringVar(value="30")
 
-        def _dt_row(parent, label, row, var):
+        def _dt_row(parent, label, row, var, default_hour=9):
             tk.Label(parent, text=label, bg="white", font=FONT_S,
                      fg="#374151", anchor="e", width=10).grid(
                 row=row, column=0, padx=(12, 6), pady=8, sticky="e")
@@ -595,12 +612,13 @@ class TaskEditor(tk.Toplevel):
             lbl = tk.Label(cell, textvariable=var, bg="#F8FAFC", relief="solid",
                            bd=1, font=FONT, anchor="w", padx=6, cursor="hand2")
             lbl.grid(row=0, column=0, sticky="ew")
+            lbl.bind("<Button-1>", lambda e, v=var, dh=default_hour: self._pick_dt(v, dh))
             btn = ttk.Button(cell, text="📅", width=3,
-                             command=lambda v=var: self._pick_dt(v))
+                             command=lambda v=var, dh=default_hour: self._pick_dt(v, dh))
             btn.grid(row=0, column=1, padx=(4, 0))
 
-        _dt_row(frm, "예정 일시", 0, self.v_scheduled)
-        _dt_row(frm, "마감 일시", 1, self.v_deadline)
+        _dt_row(frm, "예정 일시", 0, self.v_scheduled, default_hour=9)
+        _dt_row(frm, "마감 일시", 1, self.v_deadline, default_hour=18)
 
         tk.Label(frm, text="공수", bg="white", font=FONT_S,
                  fg="#374151", anchor="e", width=10).grid(
@@ -621,8 +639,8 @@ class TaskEditor(tk.Toplevel):
                  bg="white", fg="#94A3B8", font=("맑은 고딕", 8)).grid(
             row=4, column=1, padx=(0, 12), sticky="w")
 
-    def _pick_dt(self, var):
-        result = pick_datetime(self, var.get())
+    def _pick_dt(self, var, default_hour=9):
+        result = pick_datetime(self, var.get(), default_hour=default_hour)
         if result is not None:   # None = 취소, '' = 지우기
             var.set(result)
 
@@ -1091,42 +1109,93 @@ class TaskDetailPanel(tk.Frame):
 
     # ── 이력 탭
     def _build_history_tab(self):
-        frm = tk.Frame(self._history_tab, bg="white")
-        frm.pack(fill="both", expand=True, padx=8, pady=8)
-        sb = ttk.Scrollbar(frm)
-        self._history_text = tk.Text(frm, font=FONT_S, state="disabled",
-                                      relief="flat", bd=0, bg="#F8FAFC",
-                                      yscrollcommand=sb.set, wrap="word")
-        sb.config(command=self._history_text.yview)
-        self._history_text.pack(side="left", fill="both", expand=True)
+        outer = tk.Frame(self._history_tab, bg="#F8FAFC")
+        outer.pack(fill="both", expand=True, padx=8, pady=8)
+
+        self._hist_canvas = tk.Canvas(outer, bg="#F8FAFC", highlightthickness=0)
+        sb = ttk.Scrollbar(outer, orient="vertical", command=self._hist_canvas.yview)
+        self._hist_canvas.configure(yscrollcommand=sb.set)
+        self._hist_canvas.pack(side="left", fill="both", expand=True)
         sb.pack(side="right", fill="y")
 
-        # 텍스트 태그 스타일
-        self._history_text.tag_configure("ts",     foreground="#94A3B8", font=("맑은 고딕", 8))
-        self._history_text.tag_configure("field",  foreground="#1E40AF", font=FONT_S)
-        self._history_text.tag_configure("arrow",  foreground="#6B7280", font=FONT_S)
-        self._history_text.tag_configure("comment",foreground="#374151", font=FONT_S)
-        self._history_text.tag_configure("sep",    foreground="#E2E8F0", font=("맑은 고딕", 6))
+        self._hist_inner = tk.Frame(self._hist_canvas, bg="#F8FAFC")
+        self._hist_win   = self._hist_canvas.create_window(
+            (0, 0), window=self._hist_inner, anchor="nw")
+
+        self._hist_inner.bind("<Configure>",
+            lambda e: self._hist_canvas.configure(
+                scrollregion=self._hist_canvas.bbox("all")))
+        self._hist_canvas.bind("<Configure>",
+            lambda e: self._hist_canvas.itemconfig(self._hist_win, width=e.width))
+        self._hist_canvas.bind("<MouseWheel>",
+            lambda e: self._hist_canvas.yview_scroll(-1 if e.delta > 0 else 1, "units"))
 
     def _refresh_history(self, task):
-        self._history_text.config(state="normal")
-        self._history_text.delete("1.0", "end")
+        for w in self._hist_inner.winfo_children():
+            w.destroy()
+
         history = task.get("change_history", [])
         if not history:
-            self._history_text.insert("end", "변경 이력이 없습니다.", "ts")
+            tk.Label(self._hist_inner, text="변경 이력이 없습니다.",
+                     bg="#F8FAFC", fg="#94A3B8", font=FONT_S).pack(pady=20)
+            return
+
+        for entry in reversed(history):
+            self._make_history_card(entry)
+
+    def _make_history_card(self, entry):
+        ts_str = entry.get("ts", "")
+        card = tk.Frame(self._hist_inner, bg="white", relief="solid", bd=1)
+        card.pack(fill="x", pady=3, padx=2)
+
+        # 헤더: 타임스탬프 + 삭제 버튼
+        hdr = tk.Frame(card, bg="#F1F5F9")
+        hdr.pack(fill="x")
+        tk.Label(hdr, text=fmt_dt(ts_str),
+                 bg="#F1F5F9", fg="#64748B", font=("맑은 고딕", 8)).pack(
+            side="left", padx=8, pady=2)
+        tk.Button(hdr, text="🗑", bg="#F1F5F9", relief="flat",
+                  font=("맑은 고딕", 8), cursor="hand2", fg="#EF4444",
+                  command=lambda ts=ts_str: self._delete_history_entry(ts)
+                  ).pack(side="right", padx=2)
+
+        # 변경 내용
+        body = tk.Frame(card, bg="white")
+        body.pack(fill="x", padx=8, pady=(4, 2))
+        for c in entry.get("changes", []):
+            old = fmt_dt(c["old"]) if "T" in str(c["old"]) else c["old"]
+            new = fmt_dt(c["new"]) if "T" in str(c["new"]) else c["new"]
+            row = tk.Frame(body, bg="white")
+            row.pack(fill="x")
+            tk.Label(row, text=f"{c['field']}: ",
+                     bg="white", fg="#1E40AF", font=FONT_S).pack(side="left")
+            tk.Label(row, text=f"{old or '(없음)'}  →  {new or '(없음)'}",
+                     bg="white", fg="#374151", font=FONT_S,
+                     wraplength=300, justify="left").pack(side="left")
+
+        # 사유
+        if entry.get("comment"):
+            tk.Label(card, text=f"사유: {entry['comment']}",
+                     bg="white", fg="#64748B", font=FONT_S,
+                     anchor="w", wraplength=320, justify="left").pack(
+                fill="x", padx=8, pady=(0, 6))
         else:
-            for entry in reversed(history):
-                ts = fmt_dt(entry.get("ts", ""))
-                self._history_text.insert("end", f"[{ts}]\n", "ts")
-                for c in entry.get("changes", []):
-                    old = fmt_dt(c["old"]) if "T" in str(c["old"]) else c["old"]
-                    new = fmt_dt(c["new"]) if "T" in str(c["new"]) else c["new"]
-                    self._history_text.insert("end", f"  {c['field']}: ", "field")
-                    self._history_text.insert("end", f"{old or '(없음)'} → {new or '(없음)'}\n", "arrow")
-                if entry.get("comment"):
-                    self._history_text.insert("end", f"  사유: {entry['comment']}\n", "comment")
-                self._history_text.insert("end", "─" * 40 + "\n", "sep")
-        self._history_text.config(state="disabled")
+            tk.Frame(card, bg="white", height=4).pack()
+
+    def _delete_history_entry(self, ts_str):
+        if not messagebox.askyesno("삭제 확인", "이 변경 이력을 삭제하시겠습니까?",
+                                   parent=self):
+            return
+        data = load_data()
+        task = get_task(data, self._task_id)
+        if task is None:
+            return
+        task["change_history"] = [
+            e for e in task.get("change_history", [])
+            if e.get("ts") != ts_str
+        ]
+        save_data(data)
+        self.load_task(self._task_id)
 
     # ── 외부 진입점
     def load_task(self, task_id):
@@ -1154,6 +1223,746 @@ class TaskDetailPanel(tk.Frame):
 
 # ---------------------------------------------------------------------------
 # 목록 패널 (왼쪽) — 탭 구조: 미종료 / 종료 / 오늘
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# 오늘 타임라인 뷰 (Canvas 기반)
+# ---------------------------------------------------------------------------
+
+class TodayTimelineView(tk.Frame):
+    """00:00~24:00 타임라인. 작업 바 드래그로 시간/공수 직접 편집."""
+
+    HDR_H       = 32    # 눈금자 높이
+    ROW_H       = 46    # 작업 행 높이
+    LMARGIN     = 120   # 왼쪽 라벨 영역 너비
+    RMARGIN     = 14
+    RESIZE_ZONE = 10    # 오른쪽 끝 리사이즈 핫스팟 너비
+    MIN_DUR_MIN = 15    # 최소 지속 시간(분)
+
+    PRIO_FILL   = {"긴급": "#FEE2E2", "높음": "#FEF9C3",
+                   "보통": "#DBEAFE", "낮음": "#D1FAE5"}
+    PRIO_BORDER = {"긴급": "#EF4444", "높음": "#F59E0B",
+                   "보통": "#2563EB",  "낮음": "#059669"}
+
+    def __init__(self, parent, app):
+        super().__init__(parent, bg="#F8FAFC")
+        self.app  = app
+        self._all_tasks: list  = []   # load()에서 받은 원본
+        self._tasks: list      = []   # 필터 적용 후 표시 목록
+        self._task_rows: dict  = {}   # task_id → row index
+        self._drag_state       = None
+        self._selected_tid     = None  # 현재 선택된 task_id
+        self._tooltip_win      = None  # 툴팁 Toplevel
+        self._tooltip_after    = None  # 툴팁 지연 after ID
+        self._last_hover_tid   = None  # 마지막 hover task_id
+        self._v_assignee       = None  # 담당자 필터 StringVar
+        self._build()
+
+    # ── UI 구성 ─────────────────────────────────────────────────
+
+    def _build(self):
+        # ── 필터 바 ──────────────────────────────────────────────
+        fbar = tk.Frame(self, bg="#F1F5F9", pady=4)
+        fbar.pack(fill="x")
+        tk.Label(fbar, text="담당자", bg="#F1F5F9", fg="#374151",
+                 font=FONT_S).pack(side="left", padx=(8, 4))
+        self._v_assignee = tk.StringVar(value="전체")
+        self._cb_assignee = ttk.Combobox(fbar, textvariable=self._v_assignee,
+                                          values=["전체"], state="readonly",
+                                          width=10, font=FONT_S)
+        self._cb_assignee.pack(side="left", padx=(0, 10))
+        self._v_assignee.trace_add("write", lambda *_: self._apply_filter())
+
+        self._now_lbl = tk.Label(fbar, text="", bg="#F1F5F9", fg="#EF4444", font=FONT_S)
+        self._now_lbl.pack(side="right", padx=8)
+        tk.Label(fbar,
+                 text="드래그: 이동  |  양 끝: 공수 조정(30분)  |  더블클릭: 수정  |  우클릭: 메뉴",
+                 bg="#F1F5F9", fg="#64748B", font=FONT_S).pack(side="right", padx=8)
+
+        # ── 캔버스 ───────────────────────────────────────────────
+        frm = tk.Frame(self, bg="white")
+        frm.pack(fill="both", expand=True)
+
+        self._canvas = tk.Canvas(frm, bg="white", highlightthickness=0)
+        vsb = ttk.Scrollbar(frm, orient="vertical", command=self._canvas.yview)
+        self._canvas.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        self._canvas.pack(fill="both", expand=True)
+
+        self._canvas.bind("<Configure>",       lambda e: self.after(20, self._redraw))
+        self._canvas.bind("<ButtonPress-1>",   self._on_press)
+        self._canvas.bind("<B1-Motion>",       self._on_motion)
+        self._canvas.bind("<ButtonRelease-1>", self._on_release)
+        self._canvas.bind("<Double-Button-1>", self._on_double)
+        self._canvas.bind("<Button-3>",        self._on_right_click)
+        self._canvas.bind("<Motion>",          self._on_hover)
+        self._canvas.bind("<Leave>",           self._on_leave)
+        self._canvas.bind("<MouseWheel>",
+            lambda e: self._canvas.yview_scroll(-1 if e.delta > 0 else 1, "units"))
+        self._tick_now()
+
+    def _tick_now(self):
+        now = datetime.now()
+        self._now_lbl.config(text=f"현재 {now.strftime('%H:%M')}")
+        self._draw_now_line()
+        self.after(60000, self._tick_now)
+
+    # ── Public ──────────────────────────────────────────────────
+
+    def load(self, tasks):
+        self._all_tasks = [t for t in tasks if self._has_time(t)]
+        # 담당자 목록 갱신
+        assignees = sorted({t.get("assignee", "").strip()
+                            for t in self._all_tasks
+                            if t.get("assignee", "").strip()})
+        vals = ["전체"] + assignees
+        self._cb_assignee["values"] = vals
+        if self._v_assignee.get() not in vals:
+            self._v_assignee.set("전체")
+        self._apply_filter()
+
+    def _apply_filter(self):
+        sel = self._v_assignee.get()
+        if sel == "전체":
+            self._tasks = list(self._all_tasks)
+        else:
+            self._tasks = [t for t in self._all_tasks
+                           if t.get("assignee", "").strip() == sel]
+        self._tasks.sort(key=lambda t: self._start_min(t))
+        self._task_rows = {t["id"]: i for i, t in enumerate(self._tasks)}
+        self._redraw()
+
+    # ── 시간 계산 ────────────────────────────────────────────────
+
+    def _has_time(self, t):
+        return bool(t.get("scheduled_at") or t.get("deadline"))
+
+    def _start_min(self, t) -> float:
+        sch = t.get("scheduled_at", "")
+        if sch:
+            try:
+                dt = datetime.fromisoformat(sch)
+                if dt.date() < date.today():
+                    return 0.0
+                return float(dt.hour * 60 + dt.minute)
+            except Exception:
+                pass
+        dl = t.get("deadline", "")
+        if dl:
+            try:
+                dt  = datetime.fromisoformat(dl)
+                eff = parse_effort_min(t.get("effort", "")) or 60
+                return max(0.0, float(dt.hour * 60 + dt.minute) - eff)
+            except Exception:
+                pass
+        return 0.0
+
+    def _end_min(self, t) -> float:
+        dl = t.get("deadline", "")
+        if dl:
+            try:
+                dt = datetime.fromisoformat(dl)
+                if dt.date() > date.today():
+                    return 1440.0
+                return float(dt.hour * 60 + dt.minute)
+            except Exception:
+                pass
+        sch = t.get("scheduled_at", "")
+        if sch:
+            try:
+                dt  = datetime.fromisoformat(sch)
+                eff = parse_effort_min(t.get("effort", "")) or 60
+                return min(1440.0, float(dt.hour * 60 + dt.minute) + eff)
+            except Exception:
+                pass
+        return min(1440.0, self._start_min(t) + 60.0)
+
+    # ── 좌표 변환 ────────────────────────────────────────────────
+
+    def _cw(self) -> int:
+        return max(200, self._canvas.winfo_width())
+
+    def _tw(self) -> float:
+        return float(self._cw() - self.LMARGIN - self.RMARGIN)
+
+    def _min_to_x(self, m: float) -> float:
+        return self.LMARGIN + m / 1440.0 * self._tw()
+
+    def _x_to_min(self, x: float) -> float:
+        return max(0.0, min(1440.0, (x - self.LMARGIN) / self._tw() * 1440.0))
+
+    @staticmethod
+    def _snap30(m: float) -> float:
+        """30분 단위 스냅."""
+        return round(m / 30.0) * 30.0
+
+    # ── 그리기 ───────────────────────────────────────────────────
+
+    def _total_h(self) -> int:
+        return self.HDR_H + max(len(self._tasks), 3) * self.ROW_H + 20
+
+    def _redraw(self):
+        c = self._canvas
+        c.delete("all")
+        c.configure(scrollregion=(0, 0, self._cw(), self._total_h()))
+        self._draw_bg()
+        self._draw_ruler()
+        for i, t in enumerate(self._tasks):
+            self._draw_bar(i, t)
+        self._draw_now_line()
+
+    def _draw_bg(self):
+        c   = self._canvas
+        cw  = self._cw()
+        th  = self._total_h()
+        n   = max(len(self._tasks), 3)
+        for i in range(n):
+            y    = self.HDR_H + i * self.ROW_H
+            fill = "white" if i % 2 == 0 else "#F8FAFC"
+            c.create_rectangle(0, y, cw, y + self.ROW_H, fill=fill, outline="", tags="bg")
+        for h in range(25):
+            x = self._min_to_x(h * 60)
+            if h % 6 == 0:
+                lc, ld, lw = "#94A3B8", (), 1
+            elif h % 3 == 0:
+                lc, ld, lw = "#CBD5E1", (4, 4), 1
+            else:
+                lc, ld, lw = "#E2E8F0", (2, 4), 1
+            c.create_line(x, self.HDR_H, x, th, fill=lc, dash=ld, width=lw, tags="bg")
+        c.create_line(self.LMARGIN, 0, self.LMARGIN, th, fill="#CBD5E1", tags="bg")
+
+    def _draw_ruler(self):
+        c  = self._canvas
+        cw = self._cw()
+        c.create_rectangle(0, 0, cw, self.HDR_H,
+                            fill="#F1F5F9", outline="", tags="ruler")
+        c.create_rectangle(0, 0, self.LMARGIN, self.HDR_H,
+                            fill="#E2E8F0", outline="", tags="ruler")
+        c.create_text(self.LMARGIN // 2, self.HDR_H // 2,
+                      text="작업", font=("맑은 고딕", 9, "bold"),
+                      fill="#475569", tags="ruler")
+        for h in range(25):
+            x = self._min_to_x(h * 60)
+            if h % 6 == 0:
+                c.create_text(x, self.HDR_H // 2, text=f"{h:02d}:00",
+                              font=("맑은 고딕", 9), fill="#374151", tags="ruler")
+            elif h % 3 == 0:
+                c.create_text(x, self.HDR_H // 2, text=f"{h:02d}",
+                              font=("맑은 고딕", 8), fill="#94A3B8", tags="ruler")
+        c.create_line(0, self.HDR_H, cw, self.HDR_H, fill="#CBD5E1", tags="ruler")
+
+    def _draw_bar(self, row, task):
+        c   = self._canvas
+        tid = task["id"]
+        sm  = self._start_min(task)
+        em  = self._end_min(task)
+        dur = max(float(self.MIN_DUR_MIN), em - sm)
+
+        y0     = self.HDR_H + row * self.ROW_H
+        bar_y1 = y0 + 5
+        bar_y2 = y0 + self.ROW_H - 5
+        y_mid  = y0 + self.ROW_H // 2
+        x1     = self._min_to_x(sm)
+        x2     = self._min_to_x(sm + dur)
+
+        # 바 색상
+        status = task.get("status", "대기")
+        sicon  = {"진행중": "▶", "대기": "⏸", "완료": "✅", "취소": "✗"}.get(status, "")
+        prio = task.get("priority", "보통")
+        is_sel = (tid == self._selected_tid)
+        if status in ("완료", "취소"):
+            fill, border = "#E5E7EB", "#9CA3AF"
+        else:
+            fill   = self.PRIO_FILL.get(prio, "#DBEAFE")
+            border = self.PRIO_BORDER.get(prio, "#2563EB")
+            if status == "진행중":
+                border = "#1D4ED8"
+
+        outline_color = "#F59E0B" if is_sel else border
+        outline_width = 3        if is_sel else 2
+        handle_color  = "#F59E0B" if is_sel else border
+
+        c.create_rectangle(x1, bar_y1, x2, bar_y2,
+                           fill=fill, outline=outline_color, width=outline_width,
+                           tags=(f"bar_{tid}", "bar"))
+
+        # 왼쪽 라벨 (선택 시 amber 강조)
+        lbl_fg   = "#92400E" if is_sel else "#1E293B"
+        lbl_font = ("맑은 고딕", 9, "bold") if is_sel else ("맑은 고딕", 9)
+        c.create_text(8, y_mid, text=f"{sicon} {task['title']}",
+                      anchor="w", font=lbl_font, fill=lbl_fg,
+                      width=self.LMARGIN - 16, tags=f"lbl_{tid}")
+
+        # 바 라벨
+        bar_w   = x2 - x1
+        s_hhmm  = f"{int(sm)//60:02d}:{int(sm)%60:02d}"
+        e_hhmm  = f"{int(sm+dur)//60:02d}:{int(sm+dur)%60:02d}"
+        dur_str = format_effort_min(int(round(dur)))
+        if bar_w >= 120:
+            bt = f"{s_hhmm}~{e_hhmm}  ({dur_str})"
+        elif bar_w >= 70:
+            bt = f"{s_hhmm}  ({dur_str})"
+        elif bar_w >= 36:
+            bt = dur_str
+        else:
+            bt = ""
+        if bt:
+            fg_t = "#92400E" if is_sel else ("#1E40AF" if status not in ("완료", "취소") else "#6B7280")
+            c.create_text((x1 + x2) / 2, (bar_y1 + bar_y2) / 2,
+                          text=bt, font=("맑은 고딕", 8, "bold") if is_sel else ("맑은 고딕", 8),
+                          fill=fg_t, width=max(1, int(bar_w) - 8),
+                          tags=f"barlbl_{tid}")
+
+        # 리사이즈 핸들 — 왼쪽 끝
+        c.create_rectangle(x1, bar_y1 + 3,
+                           x1 + self.RESIZE_ZONE, bar_y2 - 3,
+                           fill=handle_color, outline="",
+                           tags=(f"lrsz_{tid}", "lrsz"))
+        # 리사이즈 핸들 — 오른쪽 끝
+        c.create_rectangle(x2 - self.RESIZE_ZONE, bar_y1 + 3,
+                           x2, bar_y2 - 3,
+                           fill=handle_color, outline="",
+                           tags=(f"rsz_{tid}", "rsz"))
+
+    def _draw_now_line(self):
+        c = self._canvas
+        c.delete("nowline")
+        now = datetime.now()
+        if now.date() != date.today():
+            return
+        x  = self._min_to_x(now.hour * 60 + now.minute)
+        th = self._total_h()
+        c.create_line(x, 0, x, th, fill="#EF4444", width=2, dash=(5, 3), tags="nowline")
+        c.create_oval(x - 4, self.HDR_H - 4, x + 4, self.HDR_H + 4,
+                      fill="#EF4444", outline="", tags="nowline")
+
+    # ── 히트 테스트 ──────────────────────────────────────────────
+
+    def _hit_test(self, mx, my):
+        """(task_id, 'move'|'resize_right'|'resize_left') 또는 (None, None)"""
+        cx = self._canvas.canvasx(mx)
+        cy = self._canvas.canvasy(my)
+        for task in self._tasks:
+            tid = task["id"]
+            # 오른쪽 끝 핸들
+            for item in self._canvas.find_withtag(f"rsz_{tid}"):
+                x1, y1, x2, y2 = self._canvas.coords(item)
+                if x1 <= cx <= x2 and y1 <= cy <= y2:
+                    return tid, "resize_right"
+            # 왼쪽 끝 핸들
+            for item in self._canvas.find_withtag(f"lrsz_{tid}"):
+                x1, y1, x2, y2 = self._canvas.coords(item)
+                if x1 <= cx <= x2 and y1 <= cy <= y2:
+                    return tid, "resize_left"
+            # 바 본체
+            for item in self._canvas.find_withtag(f"bar_{tid}"):
+                x1, y1, x2, y2 = self._canvas.coords(item)
+                if x1 <= cx <= x2 and y1 <= cy <= y2:
+                    return tid, "move"
+        return None, None
+
+    # ── 바 위치 실시간 업데이트 (드래그 중) ─────────────────────
+
+    def _update_bar_pos(self, task_id, sm, em):
+        c     = self._canvas
+        row   = self._task_rows.get(task_id, 0)
+        y0    = self.HDR_H + row * self.ROW_H
+        bar_y1 = y0 + 5
+        bar_y2 = y0 + self.ROW_H - 5
+        x1     = self._min_to_x(sm)
+        x2     = self._min_to_x(em)
+
+        for item in c.find_withtag(f"bar_{task_id}"):
+            c.coords(item, x1, bar_y1, x2, bar_y2)
+        for item in c.find_withtag(f"lrsz_{task_id}"):
+            c.coords(item, x1, bar_y1 + 3, x1 + self.RESIZE_ZONE, bar_y2 - 3)
+        for item in c.find_withtag(f"rsz_{task_id}"):
+            c.coords(item, x2 - self.RESIZE_ZONE, bar_y1 + 3, x2, bar_y2 - 3)
+
+        bar_w   = x2 - x1
+        dur     = em - sm
+        s_hhmm  = f"{int(sm)//60:02d}:{int(sm)%60:02d}"
+        e_hhmm  = f"{int(em)//60:02d}:{int(em)%60:02d}"
+        dur_str = format_effort_min(int(round(dur)))
+        if bar_w >= 120:
+            bt = f"{s_hhmm}~{e_hhmm}  ({dur_str})"
+        elif bar_w >= 70:
+            bt = f"{s_hhmm}  ({dur_str})"
+        elif bar_w >= 36:
+            bt = dur_str
+        else:
+            bt = ""
+        for item in c.find_withtag(f"barlbl_{task_id}"):
+            c.coords(item, (x1 + x2) / 2, (bar_y1 + bar_y2) / 2)
+            c.itemconfig(item, text=bt, width=max(1, int(bar_w) - 8))
+
+    # ── 마우스 이벤트 ─────────────────────────────────────────────
+
+    # ── 툴팁 ─────────────────────────────────────────────────────
+
+    def _tooltip_hide(self):
+        if self._tooltip_after:
+            self.after_cancel(self._tooltip_after)
+            self._tooltip_after = None
+        if self._tooltip_win:
+            try:
+                self._tooltip_win.destroy()
+            except Exception:
+                pass
+            self._tooltip_win = None
+
+    def _tooltip_show(self, task, rx, ry):
+        """task 세부 정보 툴팁을 (rx, ry) 화면 절대 좌표 근처에 표시."""
+        self._tooltip_hide()
+
+        win = tk.Toplevel(self)
+        win.overrideredirect(True)
+        win.attributes("-topmost", True)
+        win.configure(bg="#1E293B")
+        self._tooltip_win = win
+
+        # ── 내용 빌드 ──
+        def row(label, value, fg="#CBD5E1"):
+            if not value:
+                return
+            frm = tk.Frame(win, bg="#1E293B")
+            frm.pack(fill="x", padx=10, pady=1)
+            tk.Label(frm, text=label, bg="#1E293B", fg="#94A3B8",
+                     font=("맑은 고딕", 8), width=7, anchor="e").pack(side="left")
+            tk.Label(frm, text=value, bg="#1E293B", fg=fg,
+                     font=("맑은 고딕", 8), anchor="w").pack(side="left", padx=(4, 0))
+
+        # 제목
+        tk.Label(win, text=task["title"], bg="#1E293B", fg="white",
+                 font=("맑은 고딕", 9, "bold"),
+                 wraplength=260, justify="left").pack(anchor="w", padx=10, pady=(8, 4))
+
+        prio = task.get("priority", "")
+        status = task.get("status", "")
+        prio_fg = {"긴급": "#FCA5A5", "높음": "#FDE68A",
+                   "보통": "#93C5FD", "낮음": "#6EE7B7"}.get(prio, "#CBD5E1")
+        st_fg   = {"진행중": "#60A5FA", "완료": "#34D399",
+                   "취소": "#9CA3AF", "대기": "#CBD5E1"}.get(status, "#CBD5E1")
+
+        tk.Frame(win, bg="#334155", height=1).pack(fill="x", padx=8, pady=(0, 4))
+
+        row("우선순위", prio, prio_fg)
+        row("상태",     status, st_fg)
+        row("과제",     task.get("project", ""))
+        row("시스템",   task.get("system", ""))
+        row("담당자",   task.get("assignee", ""))
+        row("종류",     task.get("type", ""))
+
+        sch = fmt_dt(task.get("scheduled_at", ""))
+        dl  = fmt_dt(task.get("deadline", ""))
+        eff = task.get("effort", "")
+        aeff = task.get("actual_effort", "")
+
+        if sch or dl:
+            tk.Frame(win, bg="#334155", height=1).pack(fill="x", padx=8, pady=(4, 2))
+        row("시작",   sch)
+        row("마감",   dl)
+        row("예상",   eff)
+        row("실투입", aeff)
+
+        desc = task.get("description", "")
+        if desc:
+            tk.Frame(win, bg="#334155", height=1).pack(fill="x", padx=8, pady=(4, 2))
+            tk.Label(win, text=desc[:120] + ("…" if len(desc) > 120 else ""),
+                     bg="#1E293B", fg="#94A3B8", font=("맑은 고딕", 8),
+                     wraplength=260, justify="left").pack(anchor="w", padx=10, pady=(2, 6))
+
+        tk.Frame(win, bg="#334155", height=1).pack(fill="x", padx=0, pady=(2, 0))
+
+        # ── 위치 계산 (화면 밖으로 나가지 않도록) ──
+        win.update_idletasks()
+        tw = win.winfo_reqwidth()
+        th = win.winfo_reqheight()
+        sw = win.winfo_screenwidth()
+        sh = win.winfo_screenheight()
+        x  = min(rx + 14, sw - tw - 4)
+        y  = min(ry + 14, sh - th - 4)
+        win.geometry(f"+{x}+{y}")
+
+    def _on_hover(self, event):
+        if self._drag_state:
+            return
+        tid, dt = self._hit_test(event.x, event.y)
+
+        # 커서 변경
+        if dt in ("resize_left", "resize_right"):
+            self._canvas.config(cursor="sb_h_double_arrow")
+        elif dt == "move":
+            self._canvas.config(cursor="fleur")
+        else:
+            self._canvas.config(cursor="arrow")
+
+        # 툴팁: 작업이 바뀔 때만 처리
+        if tid == self._last_hover_tid:
+            return
+        self._last_hover_tid = tid
+        self._tooltip_hide()
+
+        if tid is None or dt is None:
+            return
+
+        task = next((t for t in self._tasks if t["id"] == tid), None)
+        if task is None:
+            return
+
+        rx = event.x_root
+        ry = event.y_root
+        self._tooltip_after = self.after(
+            500, lambda: self._tooltip_show(task, rx, ry))
+
+    def _on_leave(self, event):
+        self._last_hover_tid = None
+        self._tooltip_hide()
+
+    def _set_selected(self, tid):
+        """선택 상태 변경 — 전체 redraw 없이 해당 바 스타일만 갱신."""
+        prev = self._selected_tid
+        self._selected_tid = tid
+        for task_id, selected in ((prev, False), (tid, True)):
+            if task_id is None:
+                continue
+            task = next((t for t in self._tasks if t["id"] == task_id), None)
+            if task is None:
+                continue
+            status = task.get("status", "대기")
+            prio   = task.get("priority", "보통")
+            if status in ("완료", "취소"):
+                base_border = "#9CA3AF"
+            else:
+                base_border = self.PRIO_BORDER.get(prio, "#2563EB")
+                if status == "진행중":
+                    base_border = "#1D4ED8"
+            outline = "#F59E0B" if selected else base_border
+            width   = 3        if selected else 2
+            for item in self._canvas.find_withtag(f"bar_{task_id}"):
+                self._canvas.itemconfig(item, outline=outline, width=width)
+            for tag in (f"lrsz_{task_id}", f"rsz_{task_id}"):
+                for item in self._canvas.find_withtag(tag):
+                    self._canvas.itemconfig(item, fill=outline)
+            # 라벨 폰트/색상
+            lbl_fg   = "#92400E" if selected else "#1E293B"
+            lbl_font = ("맑은 고딕", 9, "bold") if selected else ("맑은 고딕", 9)
+            for item in self._canvas.find_withtag(f"lbl_{task_id}"):
+                self._canvas.itemconfig(item, fill=lbl_fg, font=lbl_font)
+            # 바 텍스트 폰트/색상
+            lbl_bt_fg   = "#92400E" if selected else (
+                "#1E40AF" if status not in ("완료", "취소") else "#6B7280")
+            lbl_bt_font = ("맑은 고딕", 8, "bold") if selected else ("맑은 고딕", 8)
+            for item in self._canvas.find_withtag(f"barlbl_{task_id}"):
+                self._canvas.itemconfig(item, fill=lbl_bt_fg, font=lbl_bt_font)
+
+    def _on_press(self, event):
+        self._tooltip_hide()
+        self._last_hover_tid = None
+        tid, drag_type = self._hit_test(event.x, event.y)
+        if tid is None:
+            return
+        task = next((t for t in self._tasks if t["id"] == tid), None)
+        if task is None:
+            return
+        # 선택 하이라이트 + 우측 상세 패널 갱신
+        self._set_selected(tid)
+        self.app.on_task_selected(tid)
+        self._drag_state = {
+            "task_id":    tid,
+            "type":       drag_type,
+            "press_x":    self._canvas.canvasx(event.x),
+            "orig_start": self._start_min(task),
+            "orig_end":   self._end_min(task),
+            "cur_start":  self._start_min(task),
+            "cur_end":    self._end_min(task),
+        }
+        self._canvas.config(
+            cursor="fleur" if drag_type == "move" else "sb_h_double_arrow")
+
+    def _on_motion(self, event):
+        ds = self._drag_state
+        if ds is None:
+            return
+        cx     = self._canvas.canvasx(event.x)
+        dx_min = (cx - ds["press_x"]) / self._tw() * 1440.0
+
+        if ds["type"] == "move":
+            dur = ds["orig_end"] - ds["orig_start"]
+            ns  = self._snap30(max(0.0, min(1440.0 - dur, ds["orig_start"] + dx_min)))
+            ne  = ns + dur
+        elif ds["type"] == "resize_right":
+            ns  = ds["orig_start"]
+            ne  = self._snap30(max(ns + self.MIN_DUR_MIN,
+                                   min(1440.0, ds["orig_end"] + dx_min)))
+        else:  # resize_left
+            ne  = ds["orig_end"]
+            ns  = self._snap30(min(ne - self.MIN_DUR_MIN,
+                                   max(0.0, ds["orig_start"] + dx_min)))
+
+        ds["cur_start"] = ns
+        ds["cur_end"]   = ne
+        self._update_bar_pos(ds["task_id"], ns, ne)
+
+    def _on_release(self, event):
+        ds = self._drag_state
+        if ds is None:
+            return
+        self._drag_state = None
+        self._canvas.config(cursor="arrow")
+
+        new_start  = ds["cur_start"]
+        new_end    = ds["cur_end"]
+        orig_start = ds["orig_start"]
+        orig_end   = ds["orig_end"]
+
+        # 시각적으로 원래 상태로 복원 (ChangeCommentDialog 취소 시 그대로 유지)
+        self._redraw()
+
+        if abs(new_start - orig_start) < 1 and abs(new_end - orig_end) < 1:
+            return  # 변경 없음
+
+        def min_to_hhmm(m: float) -> str:
+            m = int(round(max(0, min(1439, m))))
+            return f"{m // 60:02d}:{m % 60:02d}"
+
+        delta_s = new_start - orig_start
+        delta_e = new_end   - orig_end
+
+        # ── 변경 항목 계산 ──────────────────────────────────────
+        data = load_data()
+        task = get_task(data, ds["task_id"])
+        if task is None:
+            return
+
+        changes = []
+        today_str = date.today().isoformat()
+
+        # scheduled_at / deadline 의 실제 분(분, 날짜 무관) — 공수 계산용
+        def _actual_min(field_val: str):
+            try:
+                dt = datetime.fromisoformat(field_val)
+                return float(dt.hour * 60 + dt.minute)
+            except Exception:
+                return None
+
+        def _is_field_today(field_val: str) -> bool:
+            try:
+                return datetime.fromisoformat(field_val).date() == date.today()
+            except Exception:
+                return False
+
+        if ds["type"] == "move":
+            # 이동: delta 방식으로 기존 날짜의 시간만 조정
+            if task.get("scheduled_at"):
+                try:
+                    dt  = datetime.fromisoformat(task["scheduled_at"])
+                    nm  = max(0, min(1439, dt.hour * 60 + dt.minute + int(round(delta_s))))
+                    new_val = f"{dt.date().isoformat()}T{min_to_hhmm(nm)}"
+                    if new_val != task["scheduled_at"]:
+                        changes.append({"field": "예정일시",
+                                        "old": task["scheduled_at"], "new": new_val})
+                except Exception:
+                    pass
+            if task.get("deadline"):
+                try:
+                    dt  = datetime.fromisoformat(task["deadline"])
+                    nm  = max(0, min(1439, dt.hour * 60 + dt.minute + int(round(delta_e))))
+                    new_val = f"{dt.date().isoformat()}T{min_to_hhmm(nm)}"
+                    if new_val != task["deadline"]:
+                        changes.append({"field": "마감일시",
+                                        "old": task["deadline"], "new": new_val})
+                except Exception:
+                    pass
+
+        elif ds["type"] == "resize_right":
+            # 오른쪽 리사이즈: 종료를 오늘 날짜의 절대 위치로 설정
+            new_dl = f"{today_str}T{min_to_hhmm(new_end)}"
+            old_dl = task.get("deadline", "")
+            if new_dl != old_dl:
+                changes.append({"field": "마감일시", "old": old_dl, "new": new_dl})
+
+            # 공수: scheduled_at 이 오늘이면 실제 시각 기준, 아니면 표시상 orig_start 기준
+            sch_val = task.get("scheduled_at", "")
+            if sch_val and _is_field_today(sch_val):
+                ref_start = _actual_min(sch_val) or orig_start
+            else:
+                ref_start = orig_start  # 클램핑된 값 그대로 (과거 시작)
+            dur_min = int(round(new_end - ref_start))
+            new_eff = format_effort_min(dur_min) if dur_min > 0 else ""
+            if new_eff and new_eff != "—" and new_eff != task.get("effort", ""):
+                changes.append({"field": "공수",
+                                "old": task.get("effort", ""), "new": new_eff})
+
+        else:  # resize_left
+            # 왼쪽 리사이즈: 시작을 오늘 날짜의 절대 위치로 설정
+            new_sch = f"{today_str}T{min_to_hhmm(new_start)}"
+            old_sch = task.get("scheduled_at", "")
+            if new_sch != old_sch:
+                changes.append({"field": "예정일시", "old": old_sch, "new": new_sch})
+
+            # 공수: deadline 이 오늘이면 실제 시각 기준, 아니면 표시상 orig_end 기준
+            dl_val = task.get("deadline", "")
+            if dl_val and _is_field_today(dl_val):
+                ref_end = _actual_min(dl_val) or orig_end
+            else:
+                ref_end = orig_end  # 클램핑된 값 그대로 (미래 마감)
+            # 미래 마감(1440)이면 공수 업데이트 생략 (계산 불가)
+            if ref_end < 1440.0:
+                dur_min = int(round(ref_end - new_start))
+                new_eff = format_effort_min(dur_min) if dur_min > 0 else ""
+                if new_eff and new_eff != "—" and new_eff != task.get("effort", ""):
+                    changes.append({"field": "공수",
+                                    "old": task.get("effort", ""), "new": new_eff})
+
+        if not changes:
+            return
+
+        # ── 변경 이력 입력 창 → 저장 ────────────────────────────
+        FIELD_KEY = {"예정일시": "scheduled_at", "마감일시": "deadline", "공수": "effort"}
+
+        def do_save(comment):
+            data2 = load_data()
+            task2 = get_task(data2, ds["task_id"])
+            if task2 is None:
+                return
+            now_s = now_str()
+            for ch in changes:
+                key = FIELD_KEY.get(ch["field"])
+                if key:
+                    task2[key] = ch["new"]
+            task2.setdefault("change_history", []).append({
+                "ts": now_s, "changes": changes, "comment": comment})
+            task2["updated_at"] = now_s
+            save_data(data2)
+            self.app.refresh_list()
+
+        ChangeCommentDialog(self.winfo_toplevel(), changes, do_save)
+
+    def _on_double(self, event):
+        self._drag_state = None
+        tid, _ = self._hit_test(event.x, event.y)
+        if tid is not None:
+            self.app.edit_task(tid)
+
+    def _on_right_click(self, event):
+        tid, _ = self._hit_test(event.x, event.y)
+        if tid is None:
+            return
+        menu = tk.Menu(self, tearoff=0)
+        menu.add_command(label="✏ 수정", command=lambda: self.app.edit_task(tid))
+        menu.add_separator()
+        for s in STATUSES:
+            menu.add_command(label=f"→ {s}",
+                             command=lambda st=s: self.app.set_status(tid, st))
+        menu.add_separator()
+        menu.add_command(label="🗑 삭제", command=lambda: self.app.delete_task(tid))
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+
+
 # ---------------------------------------------------------------------------
 
 _CIRC = {i: chr(0x245F + i) for i in range(1, 21)}  # ①~⑳
@@ -1317,10 +2126,26 @@ class TaskListPanel(tk.Frame):
         bar = tk.Frame(parent, bg="#F1F5F9", pady=5)
         bar.pack(fill="x")
         tk.Label(bar,
-                 text="시작~종료 범위에 오늘이 포함되는 작업  |  드래그로 순서 조정",
+                 text="오늘 작업  |  목록: 드래그로 순서 조정",
                  bg="#F1F5F9", fg="#64748B", font=FONT_S).pack(side="left", padx=8)
 
-        self._tree_today = self._make_tree(parent, sortable=False)
+        # 뷰 전환 버튼
+        self._btn_today_timeline = tk.Button(
+            bar, text="🕐 타임라인", font=FONT_S, relief="flat", cursor="hand2",
+            bg="#F1F5F9", fg="#374151",
+            command=lambda: self._switch_today_view("timeline"))
+        self._btn_today_timeline.pack(side="right", padx=4)
+        self._btn_today_list = tk.Button(
+            bar, text="📋 목록", font=FONT_S, relief="flat", cursor="hand2",
+            bg="#2563EB", fg="white",
+            command=lambda: self._switch_today_view("list"))
+        self._btn_today_list.pack(side="right", padx=4)
+
+        # ── 목록 뷰 컨테이너 ──
+        self._today_list_frame = tk.Frame(parent, bg="white")
+        self._today_list_frame.pack(fill="both", expand=True)
+
+        self._tree_today = self._make_tree(self._today_list_frame, sortable=False)
         self._tree_today.bind("<<TreeviewSelect>>",
                               lambda e: self._on_select(self._tree_today))
         self._tree_today.bind("<Double-1>",
@@ -1329,10 +2154,31 @@ class TaskListPanel(tk.Frame):
                               lambda e: self._context_menu(e, self._tree_today))
         self._tree_today.bind("<space>",
                               lambda e: self._toggle_status(self._tree_today))
-        # 드래그 (Button-1은 drag_start에서 처리, Double-1과 충돌 없음)
         self._tree_today.bind("<ButtonPress-1>",    self._today_drag_start)
         self._tree_today.bind("<B1-Motion>",        self._today_drag_motion)
         self._tree_today.bind("<ButtonRelease-1>",  self._today_drag_end)
+
+        # ── 타임라인 뷰 컨테이너 (초기 숨김) ──
+        self._today_timeline_frame = tk.Frame(parent, bg="white")
+        self._timeline_view = TodayTimelineView(self._today_timeline_frame, self.app)
+        self._timeline_view.pack(fill="both", expand=True)
+
+        self._today_view_mode = "list"
+
+    def _switch_today_view(self, mode: str):
+        self._today_view_mode = mode
+        if mode == "list":
+            self._today_timeline_frame.pack_forget()
+            self._today_list_frame.pack(fill="both", expand=True)
+            self._btn_today_list.config(bg="#2563EB", fg="white")
+            self._btn_today_timeline.config(bg="#F1F5F9", fg="#374151")
+        else:
+            self._today_list_frame.pack_forget()
+            self._today_timeline_frame.pack(fill="both", expand=True)
+            self._btn_today_list.config(bg="#F1F5F9", fg="#374151")
+            self._btn_today_timeline.config(bg="#2563EB", fg="white")
+            today_tasks = [t for t in self._all_tasks if _is_today_task(t)]
+            self._timeline_view.load(today_tasks)
 
     # ── 데이터 로딩 ────────────────────────────────────────
 
@@ -1501,6 +2347,10 @@ class TaskListPanel(tk.Frame):
             self._insert(self._tree_today, t, row_idx=i)
         if sel and self._tree_today.exists(str(sel)):
             self._tree_today.selection_set(str(sel))
+
+        # 타임라인 뷰도 갱신 (표시 중인 경우)
+        if getattr(self, "_today_view_mode", "list") == "timeline":
+            self._timeline_view.load(today_tasks)
 
     # ── 이벤트 ────────────────────────────────────────────
 

@@ -157,12 +157,16 @@ class TrayManager:
         return img
 
     def _build_menu(self):
+        def _make_action(t):
+            def _action(icon, item):
+                self.app.root.after(0, launch_tool, t)
+            return _action
+
         items = [pystray.MenuItem("도구 허브 열기", self._show, default=True)]
         for tool in self.app.tools:
-            t = tool
             items.append(pystray.MenuItem(
-                f"  {t['icon_emoji']} {t['name']}",
-                lambda _, tool=t: self.app.root.after(0, launch_tool, tool)
+                f"  {tool['icon_emoji']} {tool['name']}",
+                _make_action(tool)
             ))
         items += [
             pystray.Menu.SEPARATOR,
