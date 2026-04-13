@@ -598,9 +598,35 @@ class TaskEditor(tk.Toplevel):
         self._todo_entry.bind("<Return>", lambda e: self._todo_add())
         ttk.Button(add_frm, text="+ 추가", command=self._todo_add, width=6).pack(side="left", padx=(4, 0))
 
-        # 목록 영역
-        self._todo_list = tk.Frame(todo_outer, bg="white")
-        self._todo_list.pack(fill="x", pady=(4, 0))
+        # 목록 영역 — 고정 높이 스크롤 캔버스
+        # (PanedWindow sash가 고정되어 단순 Frame pack 시 새 행이 숨는 문제 방지)
+        list_container = tk.Frame(todo_outer, bg="#F8FAFC", relief="solid", bd=1)
+        list_container.pack(fill="x", pady=(4, 0))
+
+        self._todo_canvas = tk.Canvas(list_container, bg="#F8FAFC",
+                                      highlightthickness=0, height=0)
+        self._todo_sb = ttk.Scrollbar(list_container, orient="vertical",
+                                      command=self._todo_canvas.yview)
+        self._todo_canvas.configure(yscrollcommand=self._todo_sb.set)
+
+        self._todo_list = tk.Frame(self._todo_canvas, bg="#F8FAFC")
+        _todo_wid = self._todo_canvas.create_window(
+            (0, 0), window=self._todo_list, anchor="nw")
+
+        def _on_todo_inner_conf(e):
+            self._todo_canvas.configure(scrollregion=self._todo_canvas.bbox("all"))
+            row_h = 28
+            h = min(row_h * 4, max(row_h, len(self._todo_items) * row_h))
+            self._todo_canvas.configure(height=h)
+            if len(self._todo_items) > 4:
+                self._todo_sb.pack(side="right", fill="y")
+            else:
+                self._todo_sb.pack_forget()
+
+        self._todo_list.bind("<Configure>", _on_todo_inner_conf)
+        self._todo_canvas.bind("<Configure>",
+                               lambda e: self._todo_canvas.itemconfig(_todo_wid, width=e.width))
+        self._todo_canvas.pack(side="left", fill="x", expand=True)
 
         self._todo_items = []  # [{"text": str, "done_var": BoolVar, "frame": Frame}]
 
