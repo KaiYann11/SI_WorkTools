@@ -1,7 +1,7 @@
 # SI WorkTools — Claude 작업 가이드
 
-Claude Code가 이 프로젝트에서 효율적으로 작업하기 위한 컨텍스트 문서.
-새 대화 시작 시 반드시 이 파일을 먼저 읽어 중복 파악 작업을 최소화한다.
+새 대화 시작 시 이 파일을 먼저 읽는다.
+상세 작업 전 해당 도구의 `docs/` 파일을 추가로 읽으면 중복 탐색이 줄어든다.
 
 ---
 
@@ -14,196 +14,113 @@ Claude Code가 이 프로젝트에서 효율적으로 작업하기 위한 컨텍
 
 ---
 
-## 공통 패턴
+## 도구별 문서 빠른 참조
 
-### GUI 규칙
+| 파일 | 상세 문서 | 한 줄 설명 |
+|------|-----------|-----------|
+| `tool_hub.pyw` | [docs/tool_hub.md](docs/tool_hub.md) | 메인 런처, 트레이, 전역 단축키, 배지 |
+| `task_manager.py` | [docs/task_manager.md](docs/task_manager.md) | 작업 CRUD, 메모, 공수, 알림 |
+| `alarm_clock.pyw` | [docs/alarm_clock.md](docs/alarm_clock.md) | 알람·타이머·스톱워치, 미니 모드 |
+| `daily_scrum.pyw` | [docs/daily_scrum.md](docs/daily_scrum.md) | 스탠드업 기록, 무드미터 |
+| `email_template.pyw` | [docs/email_template.md](docs/email_template.md) | 변수 치환 이메일 템플릿 |
+| `quick_phrases.py` | [docs/quick_phrases.md](docs/quick_phrases.md) | 자주 쓰는 문구 클립보드 복사 |
+| `file_batch_mover.py` | [docs/file_batch_mover.md](docs/file_batch_mover.md) | 폴더구조 유지 배치 복사/이동 |
+| `file_rename/rename_tool.py` | [docs/file_rename.md](docs/file_rename.md) | 파일명 일괄 변경 |
+
+공통 코드 패턴 → [docs/_patterns.md](docs/_patterns.md)  
+최근 변경 이력 → [docs/_changes.md](docs/_changes.md)
+
+---
+
+## 공통 패턴 요약
+
+> 코드 스니펫 상세는 `docs/_patterns.md` 참고.
+
+### GUI 상수
 ```python
 FONT   = ("맑은 고딕", 10)
 FONT_S = ("맑은 고딕", 9)
 FONT_B = ("맑은 고딕", 11, "bold")
-BG         = "#F8FAFC"   # 전체 배경
-HEADER_BG  = "#1E40AF"   # 헤더 파란색
-CARD_BG    = "white"     # 카드 배경
+BG        = "#F8FAFC"   # 전체 배경
+HEADER_BG = "#1E40AF"   # 헤더 파란색
+CARD_BG   = "white"     # 카드 배경
 ```
 
 ### 단일 인스턴스
 ```python
 _mutex = ctypes.windll.kernel32.CreateMutexW(None, True, "AppName_Mutex")
-if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+if ctypes.windll.kernel32.GetLastError() == 183:
     sys.exit(0)
-```
-
-### 스크롤 가능 카드 영역 패턴
-```python
-canvas = tk.Canvas(parent, bg=BG, highlightthickness=0)
-sb = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
-canvas.configure(yscrollcommand=sb.set)
-sb.pack(side="right", fill="y")
-canvas.pack(side="left", fill="both", expand=True)
-inner = tk.Frame(canvas, bg=BG)
-wid = canvas.create_window((0, 0), window=inner, anchor="nw")
-inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-canvas.bind("<Configure>", lambda e: canvas.itemconfig(wid, width=e.width))
 ```
 
 ### grab_set 다이얼로그 + refresh 순서
 ```python
-# 반드시 destroy() 먼저, refresh는 나중에 (grab 해제 후 repaint)
-self.destroy()
-self.app.refresh_list()
+self.destroy()          # grab 해제
+self.app.refresh_list() # 반드시 destroy() 후
 ```
 
 ---
 
-## 파일별 요점
+## 파일별 핵심 요점
 
 ### tool_hub.pyw
 - `hub_config.json` → `tools[]` 배열 → 카드 UI 자동 생성
 - 배지 타입: `daily_scrum_json` (오늘 히스토리 파일 유무), `task_urgent` (긴급/마감초과 작업)
-- 트레이: `pystray`, 전역 단축키: `keyboard.add_hotkey()`
+- 트레이: `pystray` / 전역 단축키: `keyboard.add_hotkey()`
 - 자동시작: `winreg` HKCU Run 키
 
 ### task_manager.py
-데이터 파일: `task_manager_data.json`
-```
-핵심 클래스:
-  TaskManagerApp
-  ├── TaskListPanel      (미종료 / 종료 / 오늘 탭 Treeview)
-  ├── TaskDetailPanel    (메모 / 연결 / 최종결과 / 변경이력 탭)
-  └── NotificationManager (daemon 스레드, 60초 주기)
+데이터: `task_manager_data.json`
 
-팝업 다이얼로그:
-  TaskEditor, MemoAddDialog, CloseTaskDialog
-  ChangeCommentDialog, SequenceManagerDialog
-  EffortReportDialog, DailyScrumExtractDialog
-  DateTimePickerDialog, LinkSelectorDialog
-```
-
-목록 컬럼 수정 시 **3곳 동시 수정 필수**:
+컬럼 추가 시 **3곳 동시 수정 필수**:
 ```python
-TREE_COLS    = ("seq", "priority", "title", "project", ...)   # 1. 컬럼 ID
-TREE_HEADERS = [("seq","순서",42), ("priority","우선",50), ...]  # 2. 헤더+너비
-# _insert() values 튜플                                         # 3. 행 데이터
+TREE_COLS    = ("seq", "priority", ...)          # 1. 컬럼 ID
+TREE_HEADERS = [("seq","순서",42), ...]           # 2. 헤더+너비
+# _insert() values 튜플                           # 3. 행 데이터
 ```
 
 공수 유틸리티:
 ```python
-parse_effort_min("1d 4h 30m") → 780   # 1일=8시간
+parse_effort_min("1d 4h 30m") → 780  # 1일=8시간
 format_effort_min(780) → "1d 4h 30m"
 ```
 
-날짜 범위 판별:
+날짜 선택 팝업:
 ```python
-_is_date_task(task, target_date)  # scheduled_at ~ deadline 범위 포함 여부
-_is_today_task(task)              # 오늘 기준
+pick_datetime(parent, initial_value="", default_hour=9) → "YYYY-MM-DDTHH:MM" | "" | None
+# default_hour: 값이 없을 때 적용되는 기본 시각 (예정=9, 마감=18)
 ```
 
-태그 우선순위 (나중에 configure된 태그가 앞 태그를 덮음):
-`완료/취소(회색)` < `overdue/dday(빨강)` < `d1(주황)` < `d3(노랑)` < `진행중(파랑)` < `related(보라, 마지막 설정)`
+태그 우선순위 (나중에 configure된 태그가 덮음):
+`완료/취소(회색)` < `overdue/dday(빨강)` < `d1(주황)` < `d3(노랑)` < `진행중(파랑)` < `related(보라, 마지막)`
 
 ### alarm_clock.pyw
-데이터 파일: `alarm_data.json`
-```
-핵심 클래스:
-  AlarmClockApp
-  ├── AlarmTab        (카드 목록, CRUD)
-  ├── TimerTab        (카운트다운)
-  ├── StopwatchTab    (스톱워치, 랩)
-  └── AlarmNotifier   (daemon 스레드, 10초 주기)
-```
+데이터: `alarm_data.json`
 
 미니 모드 상태:
 ```python
 self._mini_mode = True/False
-self._blink_after_ids = []   # 깜빡임 after ID 추적, _refresh_mini()에서 전부 취소
-self._mini_clock_after = None  # KST/UTC 시계 after ID
+self._blink_after_ids = []        # _refresh_mini() 진입 시 전부 취소 후 clear
+self._mini_clock_after = None
 ```
 
-"한 번" 알람 발화 후 처리:
-- `fired_dates[]`에 날짜 추가
-- `_make_mini_row()` 에서 `fired_dates`에 오늘이 있으면 "완료" 표시
-
-남은시간 색상: `<10분→빨강+깜빡임 / <30분→주황 / <1시간→노랑 / 이상→흰색`
+반복 알람 확인 처리:
+- 확인 체크 시 `confirmed=True` + `confirmed_date="YYYY-MM-DD"` 저장
+- `AlarmNotifier`: 날짜가 바뀌거나 당일 알람 시각이 지나면 `confirmed` 자동 해제
 
 ### daily_scrum.pyw
-- 히스토리 저장: `daily_scrum_history/YYYY-MM-DD.json`
-- 배지 조건: 오늘 파일이 없으면 `!`
+- 히스토리: `daily_scrum_history/YYYY-MM-DD.json`
+- 배지 조건: 오늘 파일 없으면 `!`
 
 ---
 
-## 데이터 스키마 요약
-
-### task_manager_data.json
-```json
-{
-  "next_id": 13,
-  "next_memo_id": 4,
-  "today_display_order": [11, 12, 3, 2],
-  "tasks": [{
-    "id": 1,
-    "title": "작업명",
-    "project": "과제명",
-    "system": "시스템",
-    "type": "구현|설계|디버깅|테스트|배포|분석|회의|기타",
-    "assignee": "담당자",
-    "priority": "긴급|높음|보통|낮음",
-    "status": "대기|진행중|완료|취소",
-    "scheduled_at": "2026-04-08T09:00",
-    "deadline": "2026-04-09T14:00",
-    "notify_before_min": 30,
-    "effort": "4h",
-    "actual_effort": "3h",
-    "seq_order": null,
-    "description": "",
-    "tags": [],
-    "parent_id": null,
-    "sub_ids": [],
-    "linked_ids": [],
-    "memos": [{ "id": 1, "ts": "2026-04-08T14:02", "content": "메모" }],
-    "result": { "summary": "", "score": null, "feedback": "" },
-    "change_history": [{ "ts": "...", "changes": [{ "field": "마감일시", "old": "...", "new": "..." }], "comment": "" }],
-    "created_at": "2026-04-08T10:43",
-    "updated_at": "2026-04-08T14:16"
-  }]
-}
-```
-
-### alarm_data.json
-```json
-{
-  "next_id": 2,
-  "alarms": [{
-    "id": 1,
-    "time": "08:00",
-    "label": "알람 라벨",
-    "repeat": "한 번|매일|평일(월~금)|주말(토~일)",
-    "enabled": true,
-    "confirmed": false,
-    "fired_dates": ["2026-04-09"]
-  }]
-}
-```
-
-### hub_config.json — tools[] 항목
-```json
-{
-  "id": "tool_id",
-  "name": "도구명",
-  "description": "설명",
-  "icon_emoji": "🔧",
-  "launch": { "type": "py|pyw|exe", "path": "상대경로" },
-  "hotkey": "ctrl+alt+N",
-  "badge_check": null
-}
-```
-
----
-
-## 주의사항 / 자주 하는 실수
+## 전역 주의사항 / 자주 하는 실수
 
 1. **컬럼 추가**: `TREE_COLS`, `TREE_HEADERS`, `_insert()` values 튜플 세 곳 동시 수정
 2. **grab_set 다이얼로그**: `destroy()` 후 `refresh_list()` 호출 순서 지킬 것
 3. **blink after_id**: `_refresh_mini()` 재진입 시 `_blink_after_ids` 전부 취소 후 clear
 4. **today_order**: `TaskListPanel._today_order`는 메모리 상태 — 파일 재로드 금지, `_save_today_order()`만 파일 갱신
 5. **Treeview 태그 순서**: `related` 태그는 항상 가장 마지막에 `tag_configure`
-6. **점수(score)**: DB에 0~100으로 저장된 구버전 데이터 → 표시 시 `if score > 5: score = round(score/20)` 변환 적용 중
+6. **점수(score)**: DB에 0~100 저장된 구버전 → 표시 시 `if score > 5: score = round(score/20)` 변환 중
+7. **after/스레드 혼용**: UI 조작은 반드시 `root.after(0, fn)` 로 메인 스레드에서 수행
+8. **날짜 선택 기본값**: `pick_datetime` 에 `default_hour` 지정 — 예정 일시=9, 마감 일시=18

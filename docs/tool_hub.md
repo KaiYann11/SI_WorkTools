@@ -70,3 +70,23 @@ SettingsPanel       (설정 Toplevel)
 1. 도구 스크립트를 `BASE_DIR`에 배치
 2. `hub_config.json` → `tools[]`에 항목 추가
 3. 도구 허브 재시작 (트레이 → 종료 후 재실행)
+
+---
+
+## 수정 시 체크리스트
+
+| 작업 | 확인 항목 |
+|------|-----------|
+| 새 배지 타입 추가 | `HubApp._check_badge()` 분기 추가 + `hub_config.json` 문서 갱신 |
+| 카드 UI 변경 | `HubApp._build_card()` — 카드 너비/높이 변경 시 그리드 재계산 |
+| 트레이 메뉴 변경 | `TrayManager._build_menu()` + 아이콘 이미지 크기 확인 |
+| 전역 단축키 변경 | `hub_config.json` `hotkey` 필드 + `HotkeyManager` 등록 로직 |
+| 자동시작 변경 | `winreg` HKCU\Software\Microsoft\Windows\CurrentVersion\Run 키 |
+
+---
+
+## 연관 파일
+
+- `hub_config.json` — 도구 목록 및 설정 (버전 관리 포함)
+- `task_manager_data.json` — `task_urgent` 배지 체크용 (런타임)
+- `daily_scrum_history/` — `daily_scrum_json` 배지 체크용 (런타임)

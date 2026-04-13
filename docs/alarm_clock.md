@@ -12,6 +12,7 @@
 - 켜짐/꺼짐 토글, 확인 체크
 - 발화 시 토스트 팝업 + 비프음 (5회)
 - "한 번" 알람: 발화 후 `fired_dates`에 기록, 미니 뷰에서 "완료" 표시
+- 반복 알람: 확인 체크 시 `confirmed_date` 저장 → 날짜 변경 또는 알람 시각 경과 후 자동 해제
 
 ### 타이머 탭
 - 시/분/초 직접 입력 또는 프리셋 (5분~1시간)
@@ -77,6 +78,7 @@
       "repeat": "매일",
       "enabled": true,
       "confirmed": false,
+      "confirmed_date": "2026-04-13",
       "fired_dates": []
     }
   ]
@@ -88,8 +90,9 @@
 | `time` | `"HH:MM"` 24시간 형식 |
 | `repeat` | `"한 번"` `"매일"` `"평일(월~금)"` `"주말(토~일)"` |
 | `enabled` | 알람 활성 여부 |
-| `confirmed` | 수동 확인 체크 여부 (토글) |
-| `fired_dates` | 발화한 날짜 목록 (`["YYYY-MM-DD"]`), "한 번" 중복 방지용 |
+| `confirmed` | 수동 확인 체크 여부 |
+| `confirmed_date` | 확인한 날짜 `"YYYY-MM-DD"` — `confirmed=true` 인 경우에만 존재 |
+| `fired_dates` | 발화한 날짜 목록, "한 번" 알람 중복 방지용 |
 
 ---
 
@@ -108,14 +111,40 @@ AlarmClockApp
 ```
 
 ### AlarmNotifier 체크 로직
-1. 현재 시각 `HH:MM` == 알람 `time` ?
-2. 오늘 이미 발화(`fired_today` set) ?
-3. 반복 조건 충족 ?
-4. → `root.after(0, _notify)` 로 UI 스레드에서 팝업 생성
+
+1. `enabled` 확인
+2. **반복 알람** `confirmed=True` 이면:
+   - `confirmed_date != today` → `confirmed` 자동 해제
+   - `confirmed_date == today` + 현재 시각 > 알람 시각 → `confirmed` 자동 해제
+3. `confirmed=True` 이면 알람 울리지 않음
+4. 현재 시각 `HH:MM` == 알람 `time` ?
+5. 오늘 이미 발화(`fired_today` set) ?
+6. 반복 조건 충족 ?
+7. → `root.after(0, _notify)` 로 UI 스레드에서 팝업 생성
 
 ### 깜빡임 관리
+
 ```python
 self._blink_after_ids = []   # after ID 목록
 # _refresh_mini() 진입 시 전부 cancel 후 clear
 # _start_blink() 에서 toggle마다 새 ID append
 ```
+
+---
+
+## 수정 시 체크리스트
+
+| 작업 | 확인 항목 |
+|------|-----------|
+| 알람 필드 추가 | `AlarmEditorDialog` 입력 UI + `_save()` + `DEFAULT_ALARM` + 스키마 |
+| 반복 조건 추가 | `AlarmNotifier._check_repeat()` + `AlarmEditorDialog` Combobox 선택지 |
+| 미니 모드 행 변경 | `_make_mini_row()` + `_refresh_mini()` after ID 목록 초기화 확인 |
+| 토스트 팝업 수정 | `NotificationPopup` + `_notify()` 호출부 양쪽 확인 |
+| `confirmed` 로직 변경 | `AlarmTab._check()` + `AlarmNotifier` 자동 해제 조건 동시 수정 |
+
+---
+
+## 연관 파일
+
+- `alarm_data.json` — 런타임 데이터 (`.gitignore` 제외)
+- `tool_hub.pyw` — 전역 단축키로 앱 실행

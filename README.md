@@ -67,7 +67,9 @@ pythonw daily_scrum.pyw
 ├── file_rename/
 │   └── rename_tool.py        # 파일명 변경기
 │
-├── docs/                     # 도구별 상세 문서
+├── docs/                     # 도구별 상세 문서 + 개발 컨텍스트
+│   ├── _patterns.md          # 공통 코드 패턴 레퍼런스
+│   ├── _changes.md           # 변경 이력 로그
 │   ├── tool_hub.md
 │   ├── task_manager.md
 │   ├── alarm_clock.md
@@ -77,7 +79,7 @@ pythonw daily_scrum.pyw
 │   ├── file_batch_mover.md
 │   └── file_rename.md
 │
-└── CLAUDE.md                 # AI 보조 개발 가이드
+└── CLAUDE.md                 # AI 보조 개발 가이드 (탐색 허브)
 ```
 
 > **런타임 데이터 파일** (`*_data.json`, `daily_scrum_history/` 등)은 `.gitignore`로 제외됨.

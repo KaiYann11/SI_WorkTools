@@ -27,6 +27,14 @@
 }
 ```
 
+| 필드 | 설명 |
+|------|------|
+| `date` | `"YYYY-MM-DD"` |
+| `mood` | 1~5 정수 (무드미터) |
+| `yesterday` | 어제 완료 내용 |
+| `today` | 오늘 계획 |
+| `issues` | 이슈/블로커 |
+
 ---
 
 ## 배지 조건
@@ -36,3 +44,20 @@
 "badge_check": { "type": "daily_scrum_json", "history_dir": "daily_scrum_history" }
 ```
 오늘 날짜 파일(`YYYY-MM-DD.json`)이 없으면 `!` 표시.
+
+---
+
+## 수정 시 체크리스트
+
+| 작업 | 확인 항목 |
+|------|-----------|
+| 입력 필드 추가 | `_save()` 직렬화 + 히스토리 로드/표시 로직 + JSON 스키마 |
+| 무드미터 단계 변경 | UI Spinbox/Combobox 범위 + 저장값 범위 검증 |
+| 히스토리 파일 경로 변경 | `hub_config.json` `history_dir` 필드와 동기화 필수 |
+
+---
+
+## 연관 파일
+
+- `daily_scrum_history/` — 런타임 데이터 (`.gitignore` 제외)
+- `tool_hub.pyw` — `daily_scrum_json` 배지 체크로 이 디렉토리 참조
